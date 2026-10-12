@@ -27,7 +27,7 @@ sys.path.insert(0, str(HERE))
 import strata_mcp as M  # noqa: E402
 
 FAKE_SETUP = r'''
-import json, sys, time
+import json, socket, sys, time
 from pathlib import Path
 def main():
     root = Path(__file__).resolve().parent
@@ -49,7 +49,8 @@ def main():
         sys.exit(1)
     a = sys.argv
     model = a[a.index("--model") + 1].lower()
-    cfg = {"exe": sys.executable, "args": ["--max-context", a[a.index("--context") + 1]], "port": 8080,
+    s = socket.socket(); s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]; s.close()
+    cfg = {"exe": sys.executable, "args": ["--max-context", a[a.index("--context") + 1]], "port": port,
            "model_name": "qwen3.8-flash-next-" + model, "log": str(root / f"strata-{model}.log")}
     (root / f"strata-{model}.json").write_text(json.dumps(cfg))
     print("All set.", flush=True)
@@ -157,6 +158,11 @@ class FakeRoot(unittest.TestCase):
         (self.root / "serve" / "server.py").write_text(FAKE_SERVER)
         self.env_backup = {k: os.environ.get(k) for k in ("APPDATA", "XDG_CONFIG_HOME")}
         os.environ["APPDATA"] = os.environ["XDG_CONFIG_HOME"] = str(base / "config")
+        # ports() always probes the default port too; on a PC that runs Strata for real that is a live server,
+        # and every fake-root status would report it.  A port nothing listens on keeps the fake root hermetic.
+        default = mock.patch.object(M, "DEFAULT_PORT", free_port())
+        default.start()
+        self.addCleanup(default.stop)
         self.strata = M.Strata(self.root)
         self.strata.python_override = sys.executable
         self.strata.health_timeout = 1.0
@@ -203,8 +209,8 @@ class FakeRoot(unittest.TestCase):
         res = r["result"]
         return json.loads(res["content"][0]["text"]), res["isError"]
 
-    def write_config(self, tag="q2_0", port=8080, **extra):
-        cfg = {"exe": sys.executable, "args": ["--max-context", "32768"], "port": port,
+    def write_config(self, tag="q2_0", port=None, **extra):
+        cfg = {"exe": sys.executable, "args": ["--max-context", "32768"], "port": port or free_port(),
                "model_name": f"qwen3.8-flash-next-{tag}", "log": str(self.root / f"strata-{tag}.log"), **extra}
         (self.root / f"strata-{tag}.json").write_text(json.dumps(cfg))
         (self.root / f"strata-{tag}.log").write_text("engine line 1\nengine line 2\n")

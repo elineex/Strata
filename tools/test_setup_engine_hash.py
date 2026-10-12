@@ -295,6 +295,12 @@ class WhatARefusalDoesToTheCaller(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         (Path(self.tmp.name) / "engine").mkdir(parents=True, exist_ok=True)
+        (Path(self.tmp.name) / "CMakeLists.txt").write_text("project(strata VERSION 0.1.43)\n", encoding="utf-8")
+        # a checkout that has Strata installed must not answer here: get_prebuilt reads ROOT/engine/BUILD.json
+        # first, and a locally compiled one makes it return None before the download the test is about
+        root = mock.patch.object(setup, "ROOT", Path(self.tmp.name))
+        root.start()
+        self.addCleanup(root.stop)
 
     def fake_download(self, url, dst, what=None):
         with zipfile.ZipFile(dst, "w") as z:
@@ -303,7 +309,10 @@ class WhatARefusalDoesToTheCaller(unittest.TestCase):
 
     def get_prebuilt(self, updating, digest):
         out = io.StringIO()
-        with contextlib_redirect(out),                 mock.patch.object(setup, "download", self.fake_download),                 mock.patch.object(setup, "engine_digest", return_value=digest):
+        with contextlib_redirect(out), \
+                mock.patch.object(setup, "download", self.fake_download), \
+                mock.patch.object(setup, "engine_digest", return_value=digest), \
+                mock.patch.object(setup.urllib.request, "urlopen"):   # the #214 HEAD probe: not the point here
             return setup.get_prebuilt(setup.PREBUILT_URL, {"arch": 89}, "gpu", updating=updating), out
 
     def test_updating_keeps_the_installed_engine_instead_of_stopping(self):
@@ -323,7 +332,9 @@ class WhatARefusalDoesToTheCaller(unittest.TestCase):
         self.assertIsNone(eng, "a refusal must not escape get_prebuilt as SystemExit")
 
     def test_a_first_install_stops_because_there_is_nothing_to_fall_back_to(self):
-        with mock.patch.object(setup, "download", self.fake_download),                 mock.patch.object(setup, "engine_digest", return_value=(999, "f" * 64)):
+        with mock.patch.object(setup, "download", self.fake_download), \
+                mock.patch.object(setup, "engine_digest", return_value=(999, "f" * 64)), \
+                mock.patch.object(setup.urllib.request, "urlopen"):
             with self.assertRaises(SystemExit):
                 setup.get_prebuilt(setup.PREBUILT_URL, {"arch": 89}, "gpu")
 

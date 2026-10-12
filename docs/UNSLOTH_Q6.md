@@ -1,15 +1,18 @@
 # Unsloth UD-Q6_K_XL (experimental)
 
-**Experimental; manual workflow only — setup does not offer this model yet.** This is Unsloth's 6-bit file of the
-same model the other packs use:
+**Experimental.** This is Unsloth's 6-bit file of the same model the other packs use:
 [unsloth/Qwen3.8-Flash-Next-GGUF, `UD-Q6_K_XL`, revision `38bb39e`](https://huggingface.co/unsloth/Qwen3.8-Flash-Next-GGUF/tree/38bb39ee97821de2c9009abb7e93950eec396e66/UD-Q6_K_XL).
-Build it for engine 0.1.38 or newer (earlier engines read `per_layer_token_embd.weight` in IQ4_NL, Q5_0 or FP8 only,
-below). UD-Q4_K_XL's manual workflow asks nothing of setup, and neither does this one.
+Build it for engine 0.1.40 or newer (earlier engines read `per_layer_token_embd.weight` in IQ4_NL, Q5_0 or FP8 only,
+and have no Q6_K expert kernels, below). Setup offers it — `--model UD-Q6_K_XL`, last in the size menu, experimental
+and never the default: it downloads the six shards, packs them, and compiles its own engine in `engine-q6k/` with
+the Q6_K kernels (the blockquote below). NVIDIA only: the AMD engine does not build those kernels, so setup refuses
+the model there. The manual workflow below still works and asks nothing of setup, as UD-Q4_K_XL's does.
 
-> **0.1.40 status.** The Q6_K gate/up kernels are an opt-in build (`-DSTRATA_Q6K_EXPERTS=ON`, plus `-DSTRATA_MMQ_KQUANTS=ON`
-> for the prompt kernels): every grouped-kernel instance is loaded at start and would cost other models expert slots. The
-> Q8_0 PLE table reader is not in this release (it comes with the PLE format series, PR #651); until then this file does
-> not load. The parity programs below have not been run on a GPU yet.
+> **0.1.40 status.** The Q8_0 PLE table reader shipped in 0.1.40, so the file loads. The Q6_K gate/up kernels stay
+> an opt-in build (`-DSTRATA_Q6K_EXPERTS=ON`, plus `-DSTRATA_MMQ_KQUANTS=ON` for the prompt kernels): every
+> grouped-kernel instance is loaded at start and would cost other models expert slots, so the ready-made engine
+> leaves them off and setup compiles `engine-q6k/` with them for this model alone. The parity programs below have
+> not been run on a GPU yet.
 
 ## What is in the file
 

@@ -38,6 +38,7 @@ td.log
 /strata-*.log
 /build-strata.bat
 /build-strata-cuda12.bat
+/build-strata-q6k.bat
 /build-cuda12/
 /.strata-mcp/
 
@@ -49,6 +50,7 @@ build-vision-cuda12.bat
 # setup.py outputs (engine, downloads) and release builds
 /engine/
 /engine-cuda12/
+/engine-q6k/
 /build-release*/
 /dist/
 *.done

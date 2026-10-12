@@ -52,11 +52,17 @@ class Choice(unittest.TestCase):
         with mock.patch.object(setup, "ROOT", Path("/s")):
             self.assertEqual(setup.engine_dir(), Path("/s/engine"))
             self.assertEqual(setup.engine_dir(12), Path("/s/engine-cuda12"))
+            self.assertEqual(setup.engine_dir(13, q6k=True), Path("/s/engine-q6k"))
         self.assertEqual(setup.config_toolkit({"exe": "/s/engine/strata.exe"}), 13)
         self.assertEqual(setup.config_toolkit({"exe": "/s/engine-cuda12/strata.exe"}), 12)
         self.assertEqual(setup.config_toolkit({"exe": "x", "cuda": 12}), 12)
+        self.assertEqual(setup.config_toolkit({"exe": "/s/engine-q6k/strata.exe"}), 13)   # same toolkit, extra kernels
+        self.assertTrue(setup.config_q6k({"exe": "/s/engine-q6k/strata.exe"}))
+        self.assertFalse(setup.config_q6k({"exe": "/s/engine/strata.exe"}))
+        self.assertFalse(setup.config_q6k({"exe": "/s/engine-cuda12/strata.exe"}))
         self.assertEqual(setup.engine_defs([86], 12), ["-DSTRATA_EXPERIMENTAL_SM60=ON"])
         self.assertEqual(setup.engine_defs([86]), [])
+        self.assertEqual(setup.engine_defs([86], 13, True), ["-DSTRATA_Q6K_EXPERTS=ON", "-DSTRATA_MMQ_KQUANTS=ON"])
 
 
 class OptIn(unittest.TestCase):

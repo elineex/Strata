@@ -573,12 +573,14 @@ class Helpers(unittest.TestCase):
         self.assertEqual(list(S.CONTEXTS), M.FALLBACK_CONTEXTS)
 
     def test_unsloth_sizes(self):
-        """0.1.39: UD-IQ4_XS is a regular size, listed first (the family's default); UD-Q4_K_XL stays experimental."""
+        """0.1.39: UD-IQ4_XS is a regular size, listed first (the family's default); the experimental UD-Q4_K_XL and
+        UD-Q6_K_XL follow it, never the default."""
         s = M.Strata(HERE.parent)
         for models in (s.tables()[0], M.FALLBACK_MODELS):
-            self.assertEqual(s.sizes_of(models, "unsloth"), ["UD-IQ4_XS", "UD-Q4_K_XL"])
+            self.assertEqual(s.sizes_of(models, "unsloth"), ["UD-IQ4_XS", "UD-Q4_K_XL", "UD-Q6_K_XL"])
             self.assertFalse(models["UD-IQ4_XS"].get("experimental"))
             self.assertTrue(models["UD-Q4_K_XL"].get("experimental"))
+            self.assertTrue(models["UD-Q6_K_XL"].get("experimental"))
         self.assertEqual(s.sizes_of(M.FALLBACK_MODELS, "qwen"), ["Q2_0", "IQ2_XS", "IQ3_XXS", "IQ3_S"])
         fam = next(f for f in s.model_table({"ram_gb": 63.7, "gpus": []}) if f["family"] == "unsloth")
         self.assertFalse(fam["experimental"])
@@ -586,8 +588,10 @@ class Helpers(unittest.TestCase):
         by = {x["model"]: x for x in fam["sizes"]}
         self.assertEqual((by["UD-IQ4_XS"]["experimental"], by["UD-IQ4_XS"]["images"]), (False, True))
         self.assertEqual((by["UD-Q4_K_XL"]["experimental"], by["UD-Q4_K_XL"]["images"]), (True, True))   # #967
+        self.assertEqual((by["UD-Q6_K_XL"]["experimental"], by["UD-Q6_K_XL"]["images"]), (True, False))
         self.assertFalse(by["UD-IQ4_XS"]["on_this_pc"].startswith("experimental"))
         self.assertTrue(by["UD-Q4_K_XL"]["on_this_pc"].startswith("experimental"))
+        self.assertTrue(by["UD-Q6_K_XL"]["on_this_pc"].startswith("experimental"))
 
     def test_recommendation_follows_ram(self):
         s = M.Strata(HERE.parent)

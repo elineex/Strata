@@ -316,7 +316,7 @@ class StartOnSeveralGpus(unittest.TestCase):
             p = Path(d) / "strata-q2_0.json"
             cfg = {"args": list(args)}
             with mock.patch.object(setup, "gpus", lambda: found), \
-                    mock.patch.object(setup, "engine_runs_on", lambda g: True):
+                    mock.patch.object(setup, "engine_runs_on", lambda *a: True):
                 code, out, asked = run(setup.offer_together, p, cfg, stdin is None, stdin=stdin)
             return code, out, asked, json.loads(p.read_text())
 
@@ -417,7 +417,7 @@ class SplitShortCard(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "strata-q2_0.json"
             with mock.patch.object(setup, "gpus", lambda: self.FOUND), \
-                    mock.patch.object(setup, "engine_runs_on", lambda g: True):
+                    mock.patch.object(setup, "engine_runs_on", lambda *a: True):
                 code, out, asked = run(setup.offer_together, p, {"args": ["--mmap-experts"]}, True)
             cfg = json.loads(p.read_text())
         self.assertIsNone(code, out)

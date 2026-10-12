@@ -427,6 +427,7 @@ class Main(Base):
 
 
 X = "UD-IQ4_XS"
+Q6 = "UD-Q6_K_XL"
 
 
 class IQ4XS(Base):
@@ -446,7 +447,7 @@ class IQ4XS(Base):
             self.assertEqual(fam["sha256"][n], setup.UNSLOTH_SHARDS[n])
         self.assertAlmostEqual(setup.MODELS[X]["download_gb"], 93682584224 / 1e9, places=1)
         self.assertEqual(setup.MODELS[X]["families"], ("unsloth",))
-        self.assertEqual([m for m in setup.MODELS if "unsloth" in setup.MODELS[m].get("families", ())], [M, X])
+        self.assertEqual([m for m in setup.MODELS if "unsloth" in setup.MODELS[m].get("families", ())], [M, X, Q6])
         self.assertIsNone(setup.gguf_unsupported(names[0]))                    # #444: a file setup runs now
         self.assertEqual(setup.gguf_choice(names[0]), ("unsloth", X))
         self.assertEqual(setup.budget_model({"args": ["--native", "/m/" + names[0]]}), X)
@@ -489,7 +490,8 @@ class IQ4XS(Base):
 
     def test_family_default_and_menus(self):
         """The first menu lists the Unsloth family without [experimental]; its size menu puts UD-IQ4_XS first (the
-        default, Enter) and UD-Q4_K_XL second, still marked EXPERIMENTAL; --model names are unchanged."""
+        default, Enter), then the experimental UD-Q4_K_XL and UD-Q6_K_XL last, both marked EXPERIMENTAL; --model
+        names are unchanged."""
         code, out, cfg = self.main(["--context", "8192", "--vision", "no"], version="0.1.38", model=False,
                                    family=False, answers={"Which model": "4"}, m=X)
         self.assertEqual(code, 0, out)
@@ -497,12 +499,14 @@ class IQ4XS(Base):
         self.assertIn("Qwen3.8-Flash-Next (Unsloth)", fam_line)
         self.assertIn("UD-IQ4_XS: a 94 GB download", fam_line)
         self.assertNotIn("[experimental]", out)
-        size_lines = [ln for ln in out.splitlines() if ln.startswith(("  1) UD-", "  2) UD-"))]
-        self.assertEqual(len(size_lines), 2, out)
+        size_lines = [ln for ln in out.splitlines() if ln.startswith(("  1) UD-", "  2) UD-", "  3) UD-"))]
+        self.assertEqual(len(size_lines), 3, out)
         self.assertTrue(size_lines[0].startswith("  1) UD-IQ4_XS ~4-bit"), size_lines[0])
         self.assertNotIn("EXPERIMENTAL", size_lines[0])
         self.assertTrue(size_lines[1].startswith("  2) UD-Q4_K_XL 4-bit"), size_lines[1])
         self.assertIn("EXPERIMENTAL", size_lines[1])
+        self.assertTrue(size_lines[2].startswith("  3) UD-Q6_K_XL 6-bit"), size_lines[2])
+        self.assertIn("EXPERIMENTAL", size_lines[2])
         self.assertTrue(any("Which size" in q and "[1]" in q for q in self.asked), self.asked)
         self.assertEqual(cfg["model_name"], "qwen3.8-flash-next-unsloth-ud-iq4_xs")
         code, out, cfg = self.main(["--context", "8192"], version="0.1.38", model=False, m=X)   # --yes: same default
@@ -640,7 +644,7 @@ class LayerSplit(unittest.TestCase):
             call = mock.Mock(return_value=0)
             with mock.patch.object(setup, "gpus", lambda: self.found), \
                     mock.patch.object(setup, "ram_gb", lambda: ram), \
-                    mock.patch.object(setup, "engine_runs_on", lambda g: True), \
+                    mock.patch.object(setup, "engine_runs_on", lambda *a: True), \
                     mock.patch.object(setup, "ensure_engine_for", lambda cards, path, cfg, yes: cfg), \
                     mock.patch.object(setup, "is_wsl", lambda: False), \
                     mock.patch.object(setup.subprocess, "call", call):

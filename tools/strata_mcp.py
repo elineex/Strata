@@ -66,6 +66,9 @@ FALLBACK_MODELS = {
                            "less than ~80 GB of RAM part of its experts are read from the SSD",
                   "download_gb": 93.7, "ram_gb": 48, "arena_gb": 59.5, "families": ("unsloth",), "budget": True,
                   "vision": True},
+    "UD-Q6_K_XL": {"about": "6-bit (Unsloth Dynamic), EXPERIMENTAL: slower than UD-Q4_K_XL (more bytes per expert, "
+                            "and its n-gram table reads 1.9x heavier)", "download_gb": 169.2, "ram_gb": 48,
+                   "arena_gb": 109.2, "families": ("unsloth",), "budget": True, "experimental": True},
 }
 FALLBACK_FAMILIES = {
     "qwen": {"title": "Qwen3.8-Flash-Next", "about": "the original model", "tag": ""},
@@ -75,7 +78,8 @@ FALLBACK_FAMILIES = {
                                                             "of RAM, faster; weaker outside coding", "tag": "coder-"},
     "unsloth": {"title": "Qwen3.8-Flash-Next (Unsloth)", "about": "UD-IQ4_XS: a 94 GB download; with less than ~80 GB "
                                                                   "of RAM part of its experts are read from the SSD "
-                                                                  "(UD-Q4_K_XL, 111 GB: experimental)",
+                                                                  "(UD-Q4_K_XL, 111 GB, and UD-Q6_K_XL, 169 GB: "
+                                                                  "experimental)",
                 "tag": "unsloth-", "vision": False},
 }
 FALLBACK_CONTEXTS = [8192, 32768, 65536, 131072, 204800, 262144, 393216, 524288]
@@ -532,7 +536,7 @@ class Strata:
                         ", ".join(c.stem[len("strata-"):] for c in have))
 
     def engine_info(self) -> dict:
-        for d in ("engine",):
+        for d in ("engine", "engine-q6k"):
             try:
                 meta = json.loads((self.root / d / "BUILD.json").read_text())
                 return {"folder": d, "version": meta.get("version"), "source": meta.get("source"),
@@ -960,8 +964,8 @@ def tool_defs(models: dict, families: dict, contexts: list) -> list:
              "family": {"type": "string", "enum": list(families),
                         "description": "qwen = Qwen3.8-Flash-Next (the original), swift = Swift 1.5 (thinks "
                                        "shorter), coder = the Coder (half the experts, ~32 GB RAM, for code), "
-                                       "unsloth = Unsloth's ~4-bit (UD-IQ4_XS; UD-Q4_K_XL is "
-                                       "experimental), part of the experts read from the SSD"},
+                                       "unsloth = Unsloth's dynamic quants (UD-IQ4_XS; UD-Q4_K_XL and UD-Q6_K_XL "
+                                       "are experimental), part of the experts read from the SSD"},
              "model": {"type": "string", "enum": list(models),
                        "description": "the size (quantization): see strata_models"},
              "context": {"type": "integer", "enum": contexts,

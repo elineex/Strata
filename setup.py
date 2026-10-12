@@ -28,8 +28,8 @@ answers, no questions), --setup (install another model / change settings instead
 --host 0.0.0.0 --api-key KEY (reach it from other devices on your network), --experimental-speed-projection on|off
 (EXPERIMENTAL, off by default),
 --models-dir DIR, --gguf-dir DIR (use GGUF files you already have), --build (compile instead of the ready-made
-engine), --check (only check this PC), --resident-budget-gib N (UD-Q4_K_XL's or UD-IQ4_XS's experts in RAM),
---kv-streaming on|off|auto.
+engine), --check (only check this PC), --resident-budget-gib N (a UD-Q4_K_XL / UD-IQ4_XS / UD-Q6_K_XL expert
+budget in RAM), --kv-streaming on|off|auto.
 
 Setup recommends, it never forces: the recommended answers are the defaults (--yes, or Enter), and a bigger choice
 than it recommends - a longer context, more GPUs, a bigger RAM budget, a size it thinks will not fit - is kept, with
@@ -192,6 +192,10 @@ CUDA12_WHEELS = ["nvidia-cublas-cu12==12.9.1.4", "nvidia-cuda-runtime-cu12==12.9
 # toolkit the CUDA 12 zip is built with (cuBLAS 12.9.1.4, runtime 12.9.79).  Not tested on such an old driver here.
 CUDA12_MIN_DRIVER = 528 if WIN else 525
 ENGINE12_DIR = "engine-cuda12"
+# UD-Q6_K_XL (docs/UNSLOTH_Q6.md): its Q6_K expert kernels are an opt-in build (-DSTRATA_Q6K_EXPERTS=ON), so no
+# ready-made engine has them.  Setup compiles one into engine-q6k/ (CUDA 13, the same wheels); the model's config
+# names it by its exe, like the CUDA 12 engine above.
+Q6K_DIR = "engine-q6k"
 MIN_ENGINE = (0, 1, 43)                # versions compare all numbers; v0.1.43: adaptive-tier copies overlap on CUDA, P100 (sm_60) kernel tables, RDNA4 (gfx1200/gfx1201) defaults (route tail skip, measured PCIe share, 16K prompt chunks, fused IQ3 prompt experts); v0.1.42.1: the GGUF-in-place file tier on Windows unmaps every shard, dual-socket starts judge each NUMA node and STRATA_DROP_CACHE_ON_EXIT, tools/strata_bench.py; v0.1.42: STRATA_ROUTE_TAIL_SKIP=7 default on CUDA (+13-16% decode), the AMD 2-GPU checkpoint fix (H13), Phase 2 fixes and opt-ins; v0.1.41.1 (folded into 0.1.42): the #1576 card order, #1616 stage size, #1595 CPU share, #1630/#1607 Windows HIP chunk cap and commit-limit warning, #1603 parallel-request bookkeeping; v0.1.41: CPU prefill share on by default (NVIDIA, chunks < 1024), --batch-groups auto, the file tier read in batches on Windows, Pascal decode fix, per-arch tables; v0.1.40.3: the #1357 MTP router guard, the #1376 Windows HIP cache floor, #461 runtime DLLs, Intel A750 first-request fix; v0.1.40.2: F4 verify windows, the Linux file tier (#1194), the stager wait (#1057), #1264/#1201/#1139 fixes, opt-in CPU share (#1282), Intel Arc; v0.1.40: --resident-experts on a layer split with the split+resident variant (#848), --kv k8v4 with KV streaming (#711); v0.1.39: the #577 file-tier regression fixed, the OpenAI Responses API (#451, Codex), a reply stuck on one token ended (#606), the head before the arena (#620), effort_position (#458), --vram-reserve hot resize opt-in (#533), PR batch; v0.1.38: prompts faster (one gather per expert group #372, the first chunk's PLE rows beside layer 0 #374, DeltaNet three heads per thread #413), --kv q4_0 prompts on tensor cores (#452), Q5_0 experts on the GPU (#473), IQ4_XS on AVX-2 (#415), unbuffered expert loading on Windows (#357 #362), --peer-device (#531), a 6 GB card starts (#496), PR batch; v0.1.37: a silent engine is restarted (#481), Windows AMD counts the desktop's VRAM (#380 #377 #497), a steadier PCIe probe (#485), fixes #496 #495 #498 #505 #493; v0.1.36: a cancelled prompt logged as read so far (#471), the draft-head hint (#474), UPDATE.bat (#475), --expert-profile-save (#477); v0.1.35: Windows AMD uses its bundled HIP runtime (#468 #461), the low-RAM resident mode on Windows 32 GB (#467), fixes #460 #459 #446 #447 #457 #448 #444; v0.1.34: AMD on Windows (a ready-made HIP engine), an MCP server for AI assistants (tools/strata_mcp.py), a shorter README; v0.1.33: a portable image encoder again (#411 #412), setup recommends instead of forcing (#406 #403 #364 #384), fixes #352 #365 #369 #371 #375 #393 #408 #414; v0.1.32: split prompts faster (#340), AMD router +12%, Unsloth Q4 in setup, faster Q4 prompts, #326/#327/#342/#344 fixes, PR batch; v0.1.31: Unsloth UD-Q4_K_XL (experimental), GGUF-in-place low-RAM mode, Windows GGUF load 2x, server race + tokenizer fixes, AMD intrinsics; v0.1.30: short prompts faster (streaming from 1024 tokens), resident low-RAM variant, multi-GPU session carve, RDNA4; v0.1.29: sampled answers faster (split top-k), #154 correctness fixes; v0.1.28: the expert cache reserves the draft head, a cancelled request no longer fails the next; v0.1.27: RTX 20 (sm_75) in the ready-made engine, the HIP build without CUDA headers; v0.1.26: the draft layer's prompt pass in batches; v0.1.25: faster prompts (grouping off the copy engine, fused hyper-connection kernels), AMD HIP backend, --kv k8v4; v0.1.24: long prompts faster (QSA select on tensor cores); v0.1.23: image requests honor sampling, 8 GB cards start, batched verify window; v0.1.22: faster prompts (tensor-core attention), multi-GPU across images/steering/KV streaming; v0.1.21: multi-GPU layer split (--gpus); v0.1.20: system-prompt checkpoint, PCIe probe, hit rate; v0.1.19: penalties
 # KV bytes per context token and attention layer: 8-bit 1056, rotated 4-bit 576, hybrid K8V4 (8-bit K, 4-bit V) 816
 KV_CELL_BYTES = {"q4_0": 576, "k8v4": 816}
@@ -230,6 +234,17 @@ MODELS = {
                   "download_gb": 93.7, "ram_gb": 48, "arena_gb": 59.5, "families": ("unsloth",), "budget": True,
                   "shards": 3, "file": "Qwen3.8-Flash-Next-{q}-0000{i}-of-00003.gguf", "engine": (0, 1, 38),
                   "vision": True},
+    # EXPERIMENTAL (docs/UNSLOTH_Q6.md): Unsloth's 6-bit file, six shards and 169 GB.  Its ~109 GB of experts run on
+    # the same RAM budget as UD-Q4_K_XL's; its Q8_0 n-gram table (54.4 GB, shard 3) is read directly (engine 0.1.40+)
+    # and its Q6_K gate/up kernels are the opt-in build, so setup compiles the engine into engine-q6k/ (q6k).  The
+    # NVIDIA engine only: the HIP build never passes the flag, so it refuses the file.
+    "UD-Q6_K_XL": {"about": "6-bit (Unsloth Dynamic), EXPERIMENTAL: slower than UD-Q4_K_XL (more bytes per expert, "
+                            "and its n-gram table reads 1.9x heavier)", "download_gb": 169.2, "ram_gb": 48,
+                   "arena_gb": 109.2, "families": ("unsloth",), "budget": True, "nvidia_only": True,
+                   "experimental": True, "q6k": True, "shards": 6,
+                   "file": "Qwen3.8-Flash-Next-{q}-0000{i}-of-00006.gguf", "engine": (0, 1, 40),
+                   "doc": "docs/UNSLOTH_Q6.md",
+                   "experimental_note": "its quality against llama.cpp has not been measured yet"},
 }
 # The experimental Unsloth file's four shards at the pinned revision: name -> (bytes, sha256), checked after the
 # download (setup trusts no other model file by name and size alone either: check_shards reads their directories).
@@ -251,6 +266,22 @@ UNSLOTH_IQ4_XS_SHARDS = {
         (49835229856, "577a38a2392b40ca2193cea502e1d92f60b8cd370675d308e0ec21885d9daaa7"),
     "Qwen3.8-Flash-Next-UD-IQ4_XS-00003-of-00003.gguf":
         (43836407744, "d4634e6d84f0ebb0940be15c90d3790bf6464e3dea3a1cddc567dc0e83ad8833"),
+}
+# UD-Q6_K_XL's six shards at the same revision (sizes and SHA-256: the Hub's tree API, docs/UNSLOTH_Q6.md; shard 1
+# is metadata, shard 2 the output head, shard 3 exactly the Q8_0 n-gram table)
+UNSLOTH_Q6_SHARDS = {
+    "Qwen3.8-Flash-Next-UD-Q6_K_XL-00001-of-00006.gguf":
+        (10946624, "8bdc6bad55b6699f46f60708829932ff4018d7ac9bd309c388534fa31753bdb7"),
+    "Qwen3.8-Flash-Next-UD-Q6_K_XL-00002-of-00006.gguf":
+        (682434912, "494ca4ed3dbf97bc28da88af3890b8877b9032f909812d00c0526a9ca5e91d2e"),
+    "Qwen3.8-Flash-Next-UD-Q6_K_XL-00003-of-00006.gguf":
+        (54400261312, "34efd79a80a1ce540a517a5d56171924b66ce1c38b04c904f17ad6d8ef17cf20"),
+    "Qwen3.8-Flash-Next-UD-Q6_K_XL-00004-of-00006.gguf":
+        (49814108512, "0ea4b599880a5a52fcd9c188ba1443f646c69c96571904ddbd6a79246a01a997"),
+    "Qwen3.8-Flash-Next-UD-Q6_K_XL-00005-of-00006.gguf":
+        (49419317344, "9948e81ae8368144b135a7403d8c0f2cf9a6c2f9f692313865855b2832e696c9"),
+    "Qwen3.8-Flash-Next-UD-Q6_K_XL-00006-of-00006.gguf":
+        (14838313984, "e4ae255234f42b18012f6d6eec5bf615b57479b7e0a0233c47436a321ffeec3f"),
 }
 UNSLOTH_ENGINE = (0, 1, 32)     # the first engine setup configures for UD-Q4_K_XL (0.1.31 ran it by hand)
 UNSLOTH_RAM_LEFT_GB = 24        # RAM beside the budget: the OS, the engine, and the file cache the rest is read through
@@ -287,16 +318,17 @@ FAMILIES = {
               "mmproj": "mmproj-Qwen3.8-Flash-Next-BF16.gguf", "name": "qwen3.8-flash-next-coder",
               "profile": "expert-profile-coder.bin"},
     # Unsloth's UD-IQ4_XS (three shards, #621; a regular choice from 0.1.39) and the EXPERIMENTAL UD-Q4_K_XL (four)
-    # of the original model (docs/UNSLOTH_Q4.md); "experimental" and "vision" are per model (MODELS)
-    "unsloth": {"title": "Qwen3.8-Flash-Next (Unsloth)", "by": "Unsloth's ~4-bit quantizations",
+    # and UD-Q6_K_XL (six, docs/UNSLOTH_Q6.md) of the original model (docs/UNSLOTH_Q4.md); "experimental", "vision"
+    # and "q6k" are per model (MODELS)
+    "unsloth": {"title": "Qwen3.8-Flash-Next (Unsloth)", "by": "Unsloth's dynamic quantizations",
                 "about": "UD-IQ4_XS: a 94 GB download; with less than ~80 GB of RAM part of its experts are read from "
-                         "the SSD (UD-Q4_K_XL, 111 GB: experimental)",
+                         "the SSD (UD-Q4_K_XL, 111 GB, and UD-Q6_K_XL, 169 GB: experimental)",
                 "hf": hf("unsloth/Qwen3.8-Flash-Next-GGUF") + "{q}/",
                 "file": "Qwen3.8-Flash-Next-{q}-0000{i}-of-00004.gguf", "shards": 4, "tag": "unsloth-",
                 "mmproj_hf": hf("ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF"),
                 "mmproj": "mmproj-Qwen3.8-Flash-Next-BF16.gguf", "name": "qwen3.8-flash-next-unsloth",
                 "vision": False, "pack_args": ["--compat-bf16"],
-                "sha256": {**UNSLOTH_SHARDS, **UNSLOTH_IQ4_XS_SHARDS}},
+                "sha256": {**UNSLOTH_SHARDS, **UNSLOTH_IQ4_XS_SHARDS, **UNSLOTH_Q6_SHARDS}},
 }
 MMPROJ = "mmproj-Qwen3.8-Flash-Next-BF16.gguf"
 # EXPERIMENTAL, off by default (setup asks): a control vector shipped with the repository, see its README
@@ -981,14 +1013,20 @@ def cuda_choice(archs, cuda=None):
     return 13, None
 
 
-def engine_dir(toolkit=13) -> Path:
-    """The folder of the engine a model runs: engine/ (CUDA 13, or HIP), engine-cuda12/ (the experimental one)."""
-    return ROOT / (ENGINE12_DIR if int(toolkit) == 12 else "engine")
+def engine_dir(toolkit=13, q6k=False) -> Path:
+    """The folder of the engine a model runs: engine/ (CUDA 13, or HIP), engine-cuda12/ (the experimental one),
+    engine-q6k/ (CUDA 13 with the opt-in Q6_K expert kernels, for UD-Q6_K_XL)."""
+    return ROOT / (Q6K_DIR if q6k else ENGINE12_DIR if int(toolkit) == 12 else "engine")
 
 
 def config_toolkit(cfg: dict) -> int:
     """12 when a model config runs the experimental CUDA 12 engine (its exe is in engine-cuda12/), else 13."""
     return 12 if cfg.get("cuda") == 12 or Path(str(cfg.get("exe", ""))).parent.name == ENGINE12_DIR else 13
+
+
+def config_q6k(cfg: dict) -> bool:
+    """True when a model config runs the engine with the Q6_K expert kernels (its exe is in engine-q6k/)."""
+    return Path(str(cfg.get("exe", ""))).parent.name == Q6K_DIR
 
 
 def gpu_problem(g, together=False):
@@ -1086,9 +1124,9 @@ def check_gpus(sel, found, what="", yes=False, named=False) -> None:
         fail(f"GPU {i}{'' if g is None else ' (' + g['name'] + ')'} {what}cannot be used: {p}", hint)
 
 
-def engine_archs(toolkit=13):
+def engine_archs(toolkit=13, q6k=False):
     """The GPU generations the installed engine has code for: (archs, ptx), or None when there is none."""
-    info = engine_dir(toolkit) / "BUILD.json"
+    info = engine_dir(toolkit, q6k) / "BUILD.json"
     try:
         meta = json.loads(info.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -1105,8 +1143,8 @@ def engine_archs_hip():
     return [str(x) for x in meta.get("archs", [])] if meta.get("backend") == "hip" else None
 
 
-def engine_runs_on(g, toolkit=13) -> bool:
-    ea = engine_archs(toolkit)
+def engine_runs_on(g, toolkit=13, q6k=False) -> bool:
+    ea = engine_archs(toolkit, q6k)
     if ea is None or not ea[0]:
         return True
     archs, ptx = ea
@@ -1315,8 +1353,8 @@ def offer_together(cfg_path: Path, cfg: dict, yes: bool) -> dict:
     short = split_short(pair)             # #448: one card recommended (asked "n" by default), as for --resident
     for g in short:
         say(f"  {split_short_note(g)}.")
-    tk = config_toolkit(cfg)
-    missing = [g for g in pair if not (engine_runs_on(g) if tk == 13 else engine_runs_on(g, tk))]
+    tk, q6k = config_toolkit(cfg), config_q6k(cfg)
+    missing = [g for g in pair if not engine_runs_on(g, tk, q6k)]
     if missing:
         say("  The installed engine has no code for " + ", ".join(g["name"] for g in missing) + ": to use them "
             "together, run START-HERE.bat --setup --gpus " + ",".join(str(g["index"]) for g in pair))
@@ -1577,9 +1615,8 @@ def gguf_dir_shards(folder: Path, fam: dict, model: str) -> list[Path]:
 GGUF_QUANT = re.compile(r"(?<![A-Za-z0-9])((?:UD-)?(?:I?Q\d+(?:_[A-Za-z0-9]+)*|BF16|F16|F32))"
                         r"(?=-\d{5}-of-\d{5}\.gguf$|\.gguf$)", re.I)
 SUPPORTED_GGUFS = ("Strata runs ISTA-DASLab's GSQ-RCO files (Qwen3.8-Flash-Next Q2_0, IQ2_XS, IQ3_XXS, IQ3_S; Swift "
-                   "1.5's; the Coder's IQ1_M) and Unsloth's UD-Q4_K_XL and UD-IQ4_XS only: other GGUFs (Unsloth's "
-                   "UD-IQ3_XXS or "
-                   "UD-Q2_K_XL, K-quants) cannot be used")
+                   "1.5's; the Coder's IQ1_M) and Unsloth's UD-IQ4_XS, UD-Q4_K_XL and (experimental) UD-Q6_K_XL "
+                   "only: other GGUFs (Unsloth's UD-IQ3_XXS or UD-Q2_K_XL, K-quants) cannot be used")
 
 
 def gguf_unsupported(name: str) -> str | None:
@@ -3076,17 +3113,20 @@ def update_engine_gpu(toolkit=13):
     return {**g, "count": len(found)}
 
 
-def update_installed_engine(url_base, toolkit=None) -> None:
+def update_installed_engine(url_base, toolkit=None, q6k=False) -> None:
     """An installed ready-made engine older than MIN_ENGINE is replaced before the model starts, so a plain
     START-HERE.bat on an existing install picks up a new release.  If that cannot happen (no internet, the model
     still running, no ready-made engine for this GPU) the installed engine is kept and starts as before.
-    toolkit None: engine/, then the experimental CUDA 12 engine in engine-cuda12/ when one is installed."""
+    toolkit None: engine/, then the experimental CUDA 12 engine in engine-cuda12/ and the Q6_K engine in
+    engine-q6k/ when one is installed."""
     if toolkit is None:
         update_installed_engine(url_base, 13)
         if (engine_dir(12) / "BUILD.json").exists():
             update_installed_engine(url_base, 12)
+        if (engine_dir(13, q6k=True) / "BUILD.json").exists():
+            update_installed_engine(url_base, 13, q6k=True)
         return
-    eng = engine_dir(toolkit)
+    eng = engine_dir(toolkit, q6k)
     info = eng / "BUILD.json"
     if not info.exists() or not (eng / EXE).exists():
         return
@@ -3124,6 +3164,10 @@ def update_installed_engine(url_base, toolkit=None) -> None:
     ver = tuple(int(x) for x in str(meta.get("version", "0")).split(".")[:4] if x.isdigit())
     local = meta.get("source") == "local"
     vision = meta.get("vision") or "none"
+    if q6k and not local:                              # no ready-made engine has the Q6_K kernels: never download
+        warn("engine-q6k/ does not hold an engine compiled here, and no ready-made one has the Q6_K kernels: "
+             "leaving it; run setup --model UD-Q6_K_XL to compile it")
+        return
     if local:                                          # compiled here: is it older than the source (a git pull)?
         if meta.get("src") == source_hash(ENGINE_SOURCES) and \
                 (vision == "none" or meta.get("vision_src") == source_hash(VISION_SOURCES)):
@@ -3146,7 +3190,7 @@ def update_installed_engine(url_base, toolkit=None) -> None:
             gpu = {**gpu, "archs": sorted({int(gpu["arch"]), *(int(x) for x in meta.get("archs", []))})}
             if int(toolkit) == 12:                     # the cards it was compiled for (the main GPU may be newer)
                 gpu["archs"] = sorted({int(x) for x in meta.get("archs", [])}) or gpu["archs"]
-            build_engine(gpu, vision, False, get_llama_cpp(), toolkit=toolkit)
+            build_engine(gpu, vision, False, get_llama_cpp(), toolkit=toolkit, q6k=q6k)
         except (Exception, SystemExit) as e:
             warn(f"could not compile the updated engine{'' if isinstance(e, SystemExit) else f' ({e})'}: starting the installed one")
         return
@@ -3358,10 +3402,12 @@ def toolkit_root_defs(nvcc) -> list:
     return [] if root == Path("/usr") else [f"-DCUDAToolkit_ROOT={root}"]
 
 
-def engine_defs(archs, toolkit=13) -> list:
+def engine_defs(archs, toolkit=13, q6k=False) -> list:
     """Extra CMake definitions for the engine: the experimental Pascal/Volta build (#295) for cards below sm_75, and
-    for every CUDA 12 engine (the same build as the ready-made CUDA 12 one: it admits the older cards)."""
-    return ["-DSTRATA_EXPERIMENTAL_SM60=ON"] if min(int(x) for x in archs) < 75 or int(toolkit) == 12 else []
+    for every CUDA 12 engine (the same build as the ready-made CUDA 12 one: it admits the older cards); the Q6_K
+    build (engine-q6k/, docs/UNSLOTH_Q6.md) adds the opt-in Q6_K grouped kernels and the MMQ prompt kernels."""
+    defs = ["-DSTRATA_EXPERIMENTAL_SM60=ON"] if min(int(x) for x in archs) < 75 or int(toolkit) == 12 else []
+    return defs + (["-DSTRATA_Q6K_EXPERTS=ON", "-DSTRATA_MMQ_KQUANTS=ON"] if q6k else [])
 
 
 def prebuilt_vision(meta: dict, gpu: dict, vision: str) -> str:
@@ -3378,15 +3424,16 @@ def prebuilt_vision(meta: dict, gpu: dict, vision: str) -> str:
     return vision
 
 
-def build_engine(gpu, vision, yes, llama, toolkit=None) -> Path:
+def build_engine(gpu, vision, yes, llama, toolkit=None, q6k=False) -> Path:
     """Compile the engine (and, for images, the encoder) for this GPU; the results go to engine/.  A compiled
     engine whose source files changed since (a `git pull`) is compiled again: only the changed files, a few minutes.
     toolkit 12 (default: 12 for a card older than CUDA 13 supports): the experimental CUDA 12 engine, in
-    engine-cuda12/ with its own build folders."""
+    engine-cuda12/ with its own build folders.  q6k: the Q6_K expert build for UD-Q6_K_XL (docs/UNSLOTH_Q6.md), in
+    engine-q6k/ with its own build folders and -DSTRATA_Q6K_EXPERTS=ON."""
     if toolkit is None:
         toolkit = 12 if min(int(x) for x in gpu.get("archs", [gpu["arch"]])) < CUDA13_MIN_ARCH else 13
     t12 = int(toolkit) == 12
-    eng = engine_dir(toolkit)
+    eng = engine_dir(toolkit, q6k)
     eng.mkdir(exist_ok=True)
     stamp = eng / "BUILD.json"
     meta = json.loads(stamp.read_text(encoding="utf-8")) if stamp.exists() else {}
@@ -3409,7 +3456,11 @@ def build_engine(gpu, vision, yes, llama, toolkit=None) -> Path:
         archs = sorted(built | set(archs))
     nvcc, vcvars = install_build_tools({**gpu, "archs": archs, "toolkit": toolkit}, yes)
     cuda_archs = ";".join(str(x) for x in archs)
-    bdir, vdir = (ROOT / "build-cuda12", ROOT / "build-vision-cuda12") if t12 else (ROOT / "build", ROOT / "build-vision")
+    # its own build folder per engine variant: the Q6_K option would otherwise flip build/'s CMakeCache on every
+    # alternating build (the reason build-cuda12/ exists, and isa_floor_defs deletes a stale cache)
+    bdir, vdir = ((ROOT / "build-cuda12", ROOT / "build-vision-cuda12") if t12 else
+                  (ROOT / "build-q6k", ROOT / "build-vision-q6k") if q6k else
+                  (ROOT / "build", ROOT / "build-vision"))
     if not engine_ok:
         say("  Compiling the engine for " + ", ".join(f"sm_{x}" for x in archs) + " (a card it had no code for; "
             "10-20 minutes, once) ..." if new_arch else
@@ -3418,9 +3469,10 @@ def build_engine(gpu, vision, yes, llama, toolkit=None) -> Path:
         cmake_build(ROOT, bdir, "strata",
                     ["-DSTRATA_ENABLE_CUDA=ON", "-DSTRATA_BUILD_TESTS=OFF", f"-DCMAKE_CUDA_ARCHITECTURES={cuda_archs}",
                      f"-DCMAKE_CUDA_COMPILER={nvcc}", *toolkit_root_defs(nvcc), f"-DSTRATA_GGML_DIR={llama}",
-                     *host_compiler_defs(True), *engine_defs(archs, toolkit),
+                     *host_compiler_defs(True), *engine_defs(archs, toolkit, q6k),
                      *isa_floor_defs(floor, bdir, meta)],
-                    vcvars, "build-strata-cuda12.bat" if t12 else "build-strata.bat")
+                    vcvars, "build-strata-cuda12.bat" if t12 else "build-strata-q6k.bat" if q6k else
+                    "build-strata.bat")
         shutil.copy2(bdir / EXE, eng / EXE)
     if not vision_ok:
         say("  Compiling the image encoder" + (" with CUDA (10-20 minutes, once) ..." if vision == "gpu" else " ..."))
@@ -3436,6 +3488,7 @@ def build_engine(gpu, vision, yes, llama, toolkit=None) -> Path:
     dirs = [str(d) for d in (bindir, bindir / "x64", bindir.parent / "lib64") if d.is_dir()]
     stamp.write_text(json.dumps({"source": "local", "version": source_version(), "archs": archs,
                                  "vision": vision, **({"toolkit": 12} if t12 else {}),
+                                 **({"q6k": True} if q6k else {}),
                                  "cuda_dirs": dirs, "src": src, "vision_src": vsrc if want_vision else None,
                                  **({"isa_floor": floor} if floor else {})}, indent=1))
     ok(f"engine compiled: {eng / EXE}")
@@ -4645,14 +4698,19 @@ def ensure_engine_for(cards, cfg_path: Path, cfg: dict, yes: bool) -> dict:
     """The installed engine must have code for every card the model starts on: a card added later (--gpus with an
     older or newer generation, #128) or a new GPU in the PC otherwise stops the start with 'no kernel image'.  Such a
     card gets the engine compiled for all of them, before the start.  A Pascal / Volta card added to a model on the
-    CUDA 13 engine moves the model to the experimental CUDA 12 engine (CUDA 13 has no code for it)."""
-    tk = config_toolkit(cfg)
+    CUDA 13 engine moves the model to the experimental CUDA 12 engine (CUDA 13 has no code for it) - except
+    UD-Q6_K_XL, whose engine exists only for CUDA 13, so an old card there is refused."""
+    tk, q6k = config_toolkit(cfg), config_q6k(cfg)
+    if q6k and tk == 13 and any(int(g["arch"]) < CUDA13_MIN_ARCH for g in cards):
+        fail("UD-Q6_K_XL runs on the CUDA 13 engine with the Q6_K kernels (engine-q6k/), and CUDA 13 has no code "
+             "for Pascal or Volta: this model cannot take an old card. Start it without the old card: "
+             "START-HERE.bat --gpu N (docs/UNSLOTH_Q6.md)")
     if tk == 13 and any(int(g["arch"]) < CUDA13_MIN_ARCH for g in cards):
         return use_cuda12(cards, cfg_path, cfg, yes)
-    missing = [g for g in cards if not (engine_runs_on(g) if tk == 13 else engine_runs_on(g, tk))]
+    missing = [g for g in cards if not engine_runs_on(g, tk, q6k)]
     if not missing:
         return cfg
-    eng = engine_dir(tk)
+    eng = engine_dir(tk, q6k)
     info = eng / "BUILD.json"
     meta = json.loads(info.read_text(encoding="utf-8"))
     say()
@@ -4661,7 +4719,7 @@ def ensure_engine_for(cards, cfg_path: Path, cfg: dict, yes: bool) -> dict:
     main = gpu_info(cards[0]["index"])
     archs = sorted({int(x) for x in meta.get("archs", [])} | {int(g["arch"]) for g in cards})
     vision = meta.get("vision") or ("gpu" if (eng / VEXE).exists() else "none")
-    build_engine({**main, "archs": archs}, vision, yes, get_llama_cpp(), toolkit=tk)
+    build_engine({**main, "archs": archs}, vision, yes, get_llama_cpp(), toolkit=tk, q6k=q6k)
     dirs = json.loads(info.read_text(encoding="utf-8")).get("cuda_dirs") or []
     cfg["lib_dirs"] = dirs + [d for d in cfg.get("lib_dirs") or [] if d not in dirs]
     write_config(cfg_path, cfg)
@@ -4870,8 +4928,8 @@ def main() -> int:
                          "this mode the experts the GPU does not hold are copied into RAM once when they fit (resident), "
                          "else read through the OS file cache (mmap); resident / mmap force one of the two")
     ap.add_argument("--resident-budget-gib", type=float, metavar="N",
-                    help="UD-Q4_K_XL, UD-IQ4_XS: the GiB of its experts kept in RAM (default: the RAM less 24 GB, 40 on 64 GB; "
-                         "more is kept as you choose, with a note)")
+                    help="UD-Q4_K_XL, UD-IQ4_XS, UD-Q6_K_XL: the GiB of its experts kept in RAM (default: the RAM "
+                         "less 24 GB, 40 on 64 GB; more is kept as you choose, with a note)")
     ap.add_argument("--vram-reserve-mib", type=int, metavar="N",
                     help="VRAM in MiB the engine leaves free for other programs (a game, another model; the engine's "
                          "default: 700); the expert cache takes that much less")
@@ -5206,6 +5264,14 @@ def main() -> int:
         say(f"  {i}) {m:8s} {d['about']}; download {d['download_gb']:.0f} GB, uses ~{d['arena_gb']:.0f} GB of RAM{fit}")
     rec = str(names.index("IQ3_XXS") + 1) if ram >= 60 and "IQ3_XXS" in names else "1"
     model = a.model or names[int(ask("Which size?", [str(i) for i in range(1, len(names) + 1)], rec, a.yes)) - 1]
+    if MODELS[model].get("q6k") and hip:
+        # the HIP engine is never compiled with STRATA_Q6K_EXPERTS (docs/UNSLOTH_Q6.md): it refuses the file, so
+        # asking to continue would only waste a 169 GB download (unlike UD-Q4_K_XL, which AMD may still run slowly)
+        fail(f"{model} needs GPU kernels the AMD engine does not have (the Q6_K kernels are CUDA-only, "
+             "docs/UNSLOTH_Q6.md): choose one of the other sizes")
+    if MODELS[model].get("q6k") and cuda_tk == 12:
+        fail(f"{model} needs the CUDA 13 engine with the Q6_K kernels: the experimental CUDA 12 engine does not "
+             "have them (docs/UNSLOTH_Q6.md; START-HERE.bat --setup --cuda 13 to move back)")
     budget, q4_split = None, False
     if MODELS[model].get("budget"):
         # Unsloth's UD-Q4_K_XL: a RAM budget of experts, the rest from the GGUF on the SSD - not the low-RAM mode (no
@@ -5213,8 +5279,9 @@ def main() -> int:
         # the RAM holds the GGUFs and 24 GB more: then several, without the budget, if asked for (#498).  #642: from
         # RESIDENT_SPLIT_ENGINE several GPUs, when asked for, keep the budget (unsloth_together)
         if MODELS[model].get("experimental"):
-            warn(f"{model} is EXPERIMENTAL (docs/UNSLOTH_Q4.md): most of its experts are read from the SSD while it "
-                 "answers, so it is several times slower than the 2-3-bit models; quality checked against llama.cpp")
+            warn(f"{model} is EXPERIMENTAL ({MODELS[model].get('doc', 'docs/UNSLOTH_Q4.md')}): most of its experts "
+                 "are read from the SSD while it answers, so it is several times slower than the 2-3-bit models; "
+                 f"{MODELS[model].get('experimental_note', 'quality checked against llama.cpp')}")
         if hip and MODELS[model].get("nvidia_only"):
             # #429 (jkuepker): checked before the 111 GB download.  The HIP engine has no prompt kernels for its
             # Q4_K / Q5_K experts (STRATA_MMQ_KQUANTS is CUDA-only) and it has not been run on AMD: asked, not refused
@@ -5240,8 +5307,8 @@ def main() -> int:
         if a.low_ram not in ("auto", "off"):
             warn(f"--low-ram {a.low_ram} does not apply to {model}: it always reads part of its experts from the files")
     elif a.resident_budget_gib is not None:
-        warn(f"--resident-budget-gib is for UD-Q4_K_XL and UD-IQ4_XS: {model} keeps all of its experts in RAM or in "
-             "the low-RAM mode")
+        warn(f"--resident-budget-gib is for {', '.join(m for m in MODELS if MODELS[m].get('budget'))}: {model} "
+             "keeps all of its experts in RAM or in the low-RAM mode")
     low_ram = low_ram_wanted(model, ram, a.low_ram)
     # #642: the engines from RESIDENT_SPLIT_ENGINE run the low-RAM mode on the chosen cards as on one (decided below)
     if low_ram and multi and not resident_split() and not low_ram_together(a, model, ram, gpu, chosen):
@@ -5434,6 +5501,7 @@ def main() -> int:
     step(4, "the Strata engine")
     llama = get_llama_cpp()
     ok(f"llama.cpp {LLAMA_CPP_COMMIT[:7]} (gguf-py, ggml, mtmd)")
+    q6k = bool(MODELS[model].get("q6k"))               # engine-q6k/ is only ever the one compiled here
     if hip and WIN:                                    # AMD on Windows: the ready-made HIP engine (no compiler)
         eng = None if a.build else get_prebuilt_hip(a.prebuilt, gpu)
         if eng is None:
@@ -5443,8 +5511,9 @@ def main() -> int:
         gpu = hip_card(eng, gpu, amd)
         a.gpu = gpu["index"] if gpu["count"] > 1 else a.gpu
     else:
-        eng = None if a.build or hip else get_prebuilt(a.prebuilt, gpu, vision, **({"toolkit": 12} if cuda_tk == 12
-                                                                                    else {}))
+        # no ready-made engine has the Q6_K kernels (docs/UNSLOTH_Q6.md): UD-Q6_K_XL always compiles its own
+        eng = None if a.build or hip or q6k else get_prebuilt(a.prebuilt, gpu, vision, **({"toolkit": 12} if cuda_tk == 12
+                                                                                          else {}))
     if eng is not None and not hip and json.loads((eng / "BUILD.json").read_text(encoding="utf-8")).get("source") != "local":
         pip_cuda_libs(cuda_tk)
         if vision != "none" and not (eng / VEXE).exists():
@@ -5453,7 +5522,8 @@ def main() -> int:
         else:
             vision = prebuilt_vision(json.loads((eng / "BUILD.json").read_text(encoding="utf-8")), gpu, vision)
     if eng is None:
-        eng = build_engine_hip(gpu, llama, vision) if hip else build_engine(gpu, vision, a.yes, llama, toolkit=cuda_tk)
+        eng = build_engine_hip(gpu, llama, vision) if hip else build_engine(gpu, vision, a.yes, llama,
+                                                                            toolkit=cuda_tk, q6k=q6k)
     meta = json.loads((eng / "BUILD.json").read_text(encoding="utf-8"))
     if hip and WIN:                                    # the ready-made engine's rocm/bin, first on the engine's PATH
         lib_dirs = [str(d) for d in hip_lib_dirs(eng)]
